@@ -1,6 +1,7 @@
 package com.github.mmolimar.kafka.connect.fs.policy;
 
 import com.github.mmolimar.kafka.connect.fs.FsSourceTaskConfig;
+import com.github.mmolimar.kafka.connect.fs.LocalOffsetStorageReader;
 import com.github.mmolimar.kafka.connect.fs.file.FileMetadata;
 import com.github.mmolimar.kafka.connect.fs.file.reader.FileReader;
 import com.github.mmolimar.kafka.connect.fs.util.ReflectionUtils;
@@ -12,6 +13,7 @@ import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.IllegalWorkerStateException;
+import org.apache.kafka.connect.source.SourceTaskContext;
 import org.apache.kafka.connect.storage.OffsetStorageReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +38,8 @@ abstract class AbstractPolicy implements Policy {
     private final AtomicInteger executions;
     private final boolean recursive;
     private boolean interrupted;
+    private OffsetStorageReader offsetStorageReader;
+    private SourceTaskContext sourceTaskContext;
 
     public AbstractPolicy(FsSourceTaskConfig conf) throws IOException {
         this.fileSystems = new ArrayList<>();
@@ -49,6 +53,18 @@ abstract class AbstractPolicy implements Policy {
         logAll(customConfigs);
         configFs(customConfigs);
         configPolicy(customConfigs);
+    }
+
+    public AbstractPolicy(FsSourceTaskConfig conf, SourceTaskContext sourceTaskContext) throws IOException {
+        this(conf);
+        this.sourceTaskContext = sourceTaskContext;
+        OffsetStorage offsetStorage = OffsetStorage.fromString(conf.getString(FsSourceTaskConfig.OFFSET_STORAGE));
+        if (offsetStorage == null || offsetStorage == OffsetStorage.CONTEXT) {
+            // Default
+            this.offsetStorageReader = sourceTaskContext.offsetStorageReader();
+        } else if (offsetStorage == OffsetStorage.LOCAL) {
+            this.offsetStorageReader = new LocalOffsetStorageReader();
+        }
     }
 
     private Map<String, Object> customConfigs() {
@@ -189,7 +205,7 @@ abstract class AbstractPolicy implements Policy {
     }
 
     @Override
-    public FileReader offer(FileMetadata metadata, OffsetStorageReader offsetStorageReader) throws IOException {
+    public FileReader offer(FileMetadata metadata) throws IOException {
         Map<String, Object> partition = new HashMap<String, Object>() {{
             put("path", metadata.getPath());
             //TODO manage blocks
@@ -208,11 +224,21 @@ abstract class AbstractPolicy implements Policy {
             throw new ConnectException("An error has occurred when creating reader for file: " + metadata.getPath(), t);
         }
 
+        syncOffsets(partition);
+
         Map<String, Object> offset = offsetStorageReader.offset(partition);
         if (offset != null && offset.get("offset") != null) {
             reader.seek(() -> (Long) offset.get("offset"));
         }
         return reader;
+    }
+
+    @Override
+    public void updateOffset(FileMetadata metadata, Long offsetVal) {
+        if(!usingLocalStorage()) {
+            return;
+        }
+        ((LocalOffsetStorageReader)this.offsetStorageReader).setOffset(metadata.getPath(), offsetVal);
     }
 
     Iterator<FileMetadata> concat(final Iterator<FileMetadata> it1,
@@ -236,6 +262,32 @@ abstract class AbstractPolicy implements Policy {
         for (FileSystem fs : fileSystems) {
             fs.close();
         }
+    }
+
+    /**
+     * Bring local and remote into line, if required
+     * @param partition Partition to process
+     */
+    private void syncOffsets(Map<String, Object> partition) {
+        if(!usingLocalStorage()) {
+            return;
+        }
+
+        Long kafkaOffset = this.sourceTaskContext.offsetStorageReader().offset(partition) != null ?
+                (Long)this.sourceTaskContext.offsetStorageReader().offset(partition).get("offset") : 0L;
+
+        Long localOffset = this.offsetStorageReader.offset(partition) != null ?
+                (Long)this.offsetStorageReader.offset(partition).get("offset") : 0L;
+
+        log.debug("{}, Kafka offset {}, local offset {} ", partition, kafkaOffset, localOffset);
+        if(kafkaOffset > localOffset) {
+            // Kafka offset is ahead of local. Align.
+            ((LocalOffsetStorageReader)this.offsetStorageReader).setOffset((String)partition.get("path"), kafkaOffset);
+        }
+    }
+
+    private boolean usingLocalStorage() {
+        return (this.offsetStorageReader instanceof LocalOffsetStorageReader);
     }
 
     private void logAll(Map<String, Object> conf) {

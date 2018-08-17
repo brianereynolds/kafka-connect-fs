@@ -2,6 +2,7 @@ package com.github.mmolimar.kafka.connect.fs.policy;
 
 import com.github.mmolimar.kafka.connect.fs.FsSourceTaskConfig;
 import org.apache.kafka.common.config.ConfigException;
+import org.apache.kafka.connect.source.SourceTaskContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,6 +27,10 @@ public class SleepyPolicy extends AbstractPolicy {
 
     public SleepyPolicy(FsSourceTaskConfig conf) throws IOException {
         super(conf);
+    }
+
+    public SleepyPolicy(FsSourceTaskConfig conf, SourceTaskContext sourceTaskContext) throws IOException {
+        super(conf, sourceTaskContext);
     }
 
     @Override

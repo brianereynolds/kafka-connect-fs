@@ -12,6 +12,7 @@ import org.apache.hadoop.hdfs.inotify.Event;
 import org.apache.hadoop.hdfs.inotify.EventBatch;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.IllegalWorkerStateException;
+import org.apache.kafka.connect.source.SourceTaskContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +31,12 @@ public class HdfsFileWatcherPolicy extends AbstractPolicy {
 
     public HdfsFileWatcherPolicy(FsSourceTaskConfig conf) throws IOException {
         super(conf);
+        this.fileQueue = new ConcurrentLinkedQueue();
+        startWatchers();
+    }
+
+    public HdfsFileWatcherPolicy(FsSourceTaskConfig conf, SourceTaskContext sourceTaskContext) throws IOException {
+        super(conf, sourceTaskContext);
         this.fileQueue = new ConcurrentLinkedQueue();
         startWatchers();
     }

@@ -49,7 +49,7 @@ public class FsSourceTask extends SourceTask {
 
             Class<Policy> policyClass = (Class<Policy>) Class.forName(properties.get(FsSourceTaskConfig.POLICY_CLASS));
             FsSourceTaskConfig taskConfig = new FsSourceTaskConfig(properties);
-            policy = ReflectionUtils.makePolicy(policyClass, taskConfig);
+            policy = ReflectionUtils.makePolicy(policyClass, taskConfig, context);
         } catch (ConfigException ce) {
             log.error("Couldn't start FsSourceTask:", ce);
             throw new ConnectException("Couldn't start FsSourceTask due to configuration error", ce);
@@ -69,10 +69,12 @@ public class FsSourceTask extends SourceTask {
             final List<SourceRecord> results = new ArrayList<>();
             List<FileMetadata> files = filesToProcess();
             files.forEach(metadata -> {
-                try (FileReader reader = policy.offer(metadata, context.offsetStorageReader())) {
+                try (FileReader reader = policy.offer(metadata)) {
                     log.info("Processing records for file {}", metadata);
                     while (reader.hasNext()) {
                         results.add(convert(metadata, reader.currentOffset(), reader.next()));
+                        log.debug("Setting {} offset to {}", metadata.getPath(), reader.currentOffset().getRecordOffset());
+                        policy.updateOffset(metadata, Long.valueOf(reader.currentOffset().getRecordOffset()));
                     }
                 } catch (ConnectException | IOException e) {
                     //when an exception happens reading a file, the connector continues

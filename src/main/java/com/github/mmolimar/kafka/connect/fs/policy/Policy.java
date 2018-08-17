@@ -13,7 +13,9 @@ public interface Policy extends Closeable {
 
     Iterator<FileMetadata> execute() throws IOException;
 
-    FileReader offer(FileMetadata metadata, OffsetStorageReader offsetStorageReader) throws IOException;
+    FileReader offer(FileMetadata metadata) throws IOException;
+
+    default void updateOffset(FileMetadata metadata, Long offset) {}
 
     boolean hasEnded();
 

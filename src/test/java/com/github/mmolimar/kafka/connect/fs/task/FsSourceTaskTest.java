@@ -5,10 +5,12 @@ import com.github.mmolimar.kafka.connect.fs.FsSourceTaskConfig;
 import com.github.mmolimar.kafka.connect.fs.file.reader.TextFileReader;
 import com.github.mmolimar.kafka.connect.fs.policy.SimplePolicy;
 import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.connect.source.SourceTaskContext;
 import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.powermock.api.easymock.PowerMock;
 
 import java.io.File;
 import java.io.IOException;
@@ -37,6 +39,9 @@ public class FsSourceTaskTest {
             put(FsSourceTaskConfig.POLICY_CLASS, SimplePolicy.class.getName());
             put(FsSourceTaskConfig.FILE_READER_CLASS, TextFileReader.class.getName());
         }};
+
+        SourceTaskContext taskContext = PowerMock.createMock(SourceTaskContext.class);
+        task.initialize(taskContext);
     }
 
     @Test(expected = ConnectException.class)
